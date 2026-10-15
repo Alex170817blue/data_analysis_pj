@@ -132,6 +132,45 @@ class Database:
     def list_tables(self) -> list[str]:
         return list(self.tables.keys())
 
+    def create_empty_table(self, table_name, columns):
+        if table_name in self.tables:
+            raise ValueError(
+                f"La tabella '{table_name}' esiste già."
+            )
+
+        self.tables[table_name] = pd.DataFrame(
+            columns=columns
+        )
+
+    
+    def write_to_sql(
+            self,
+            table_name: str,
+            connection,
+            sql_table_name: str | None = None,
+        ) -> int:
+        if table_name not in self.tables:
+            raise KeyError(
+                f"Tabella '{table_name}' non presente in memoria."
+            )
+
+        if connection.engine is None:
+            raise RuntimeError(
+                "Connessione SQL non attiva. Chiama connect() prima."
+            )
+
+        df = self.get_table(table_name)
+        destination = sql_table_name or table_name
+
+        df.to_sql(
+            name=destination,
+            con=connection.engine,
+            if_exists="fail",
+            index=False,
+        )
+
+        return len(df)
+
 '''
 
 Come si usa??
