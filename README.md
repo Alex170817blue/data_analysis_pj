@@ -2,38 +2,38 @@
 
 data-analytics-pipeline/
 │
-├── readers/
+├── config/
 │   ├── __init__.py
-│   ├── base_reader.py
-│   |── csv_reader.py
-|   └── altri_reader ...
+│   └── sources.py              # Configurazioni delle fonti (delimitatori, porte, endpoint HTTP, ecc.)
 │
 ├── dao/
 │   ├── __init__.py
-│   ├── film_dao.py
-│   ├── genres_dao.py
-│   └── altri_dao ...
-│
-├── config/
-│   ├── __init__.py
-│   └── sources.py
-|
-|
-├── transformers/
-│   ├── film_transformer.py
-│   └── altri_transformers ... 
+│   ├── film_dao.py             # Metodi specifici per accedere ai dati dei film
+│   ├── genres_dao.py           # Metodi specifici per accedere ai dati dei generi
+│   └── altri_dao.py            # Ulteriori Data Access Object
 │
 ├── data/
-│   ├── movies.csv
-│   ├── users.sql
-│   ├── views.xlsx
-│   └── altri_dati ...
+│   ├── movies.csv              # File di dati CSV
+│   ├── users.sql               # Script o dump di dati SQL
+│   ├── views.xlsx              # File di dati Excel
+│   └── altri_dati...
 │
+├── readers/
+│   ├── __init__.py
+│   ├── base_reader.py          # Classe base astratta per i lettori
+│   ├── csv_reader.py           # Lettore specifico per file CSV
+│   └── altri_reader.py         # Ulteriori moduli di lettura sorgenti
 │
-├── database.py
-├── main.py
-├── requirements.txt
-└── README.md
+├── transformers/
+│   ├── __init__.py
+│   ├── film_transformer.py     # Logica di trasformazione specifica per i film
+│   └── altri_transformers.py
+│
+├── database.py                 # Core engine per l'ingestione, pulizia e archiviazione in memoria
+├── main.py                     # Entry point dell'applicazione
+├── README.md                   # Documentazione del progetto
+└── requirements.txt            # Dipendenze del progetto
+
 
 # Readers
 contiene le classi responsabili della lettura delle diverse sorgenti
