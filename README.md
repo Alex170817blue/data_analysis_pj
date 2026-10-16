@@ -1,83 +1,41 @@
-# Data Analytics Pipeline
+# DB_SAC01 — Pipeline di Data Analytics
 
-Pipeline modulare e riutilizzabile per l'acquisizione, la pulizia, la standardizzazione, la validazione e l'esportazione di dati provenienti da fonti eterogenee.
+## Descrizione del progetto
 
-Il progetto è pensato per preparare dati affidabili per attività di data analytics e strumenti di Business Intelligence, come Power BI, mantenendo separate le responsabilità di lettura, trasformazione, gestione in memoria, persistenza e accesso ai dati.
+Il progetto implementa una pipeline Python per la lettura, la pulizia, la trasformazione e l'organizzazione di dati cinematografici, con esportazione in CSV e MySQL.
 
-L'architettura è progettata per essere adattabile a clienti e dataset differenti senza dover riscrivere la logica centrale.
+L'obiettivo è separare le responsabilità in moduli indipendenti, rendendo il codice più riutilizzabile, manutenibile e facilmente estendibile.
 
-## Indice
+## Architettura
 
-- [Obiettivi](#obiettivi)
-- [Struttura del progetto](#struttura-del-progetto)
-- [Architettura](#architettura)
-  - [Readers](#1-readers)
-  - [Database](#2-database)
-  - [Transformers](#3-transformers)
-  - [Connessione SQL](#4-connessione-sql)
-  - [DAO](#5-dao)
-  - [Config](#6-config)
-  - [Data](#7-data)
-- [Flusso dei dati](#flusso-dei-dati)
-- [Installazione](#installazione)
-- [Configurazione](#configurazione)
-- [Esecuzione della pipeline](#esecuzione-della-pipeline)
-- [Esportazione in MySQL](#esportazione-in-mysql)
-- [Gestione delle credenziali](#gestione-delle-credenziali)
-- [Estensioni future](#estensioni-future)
+La pipeline segue questo flusso:
 
-## Obiettivi
+**CSV sorgente → Readers → Transformations → Database in memoria → MySQL**
 
-Il progetto mira a:
+I DAO permettono inoltre di accedere ai dati attraverso oggetti Python, come `Movie` e `Genre`.
 
-- Acquisire dati da sorgenti e formati differenti.
-- Separare la logica di lettura da quella di trasformazione.
-- Standardizzare nomi delle colonne e tipi di dato.
-- Pulire e validare i dati prima dell'esportazione.
-- Correggere anomalie note attraverso regole ripetibili.
-- Organizzare i dati in una o più tabelle logiche.
-- Conservare temporaneamente le tabelle elaborate in memoria tramite Pandas.
-- Esportare i risultati in formato CSV.
-- Trasferire le tabelle elaborate in un database MySQL.
-- Predisporre interfacce DAO per l'accesso ai dati da parte dei consumatori.
-- Favorire il riutilizzo del codice tra clienti e dataset differenti.
-
-## Struttura del progetto
+### Struttura del progetto
 
 ```text
-data-analytics-pipeline/
-│
+DB_SAC01/
 ├── config/
-│   ├── __init__.py
 │   └── sources.py
-│
 ├── readers/
 │   ├── __init__.py
 │   ├── base_reader.py
 │   └── csv_reader.py
-│
-├── transformers/
+├── transformations/
 │   ├── __init__.py
-│   └── film_transformer.py
-│
-├── validators/
-│   ├── __init__.py
-│   └── film_validator.py
-│
-├── reports/
-│   ├── __init__.py
-│   └── quality_report.py
-│
+│   ├── film_transformers.py
+│   └── relational_movie_transformer.py
 ├── dao/
 │   ├── __init__.py
-│   ├── film_dao.py
-│   ├── genres_dao.py
-│   └── altri_dao.py
-│
+│   ├── dao_movie.py
+│   └── dao_genre.py
 ├── data/
-│   ├── file CSV originali
+│   ├── Elenco Movies definitivo.csv
 │   └── movies_clean.csv
-│
+├── model.py
 ├── database.py
 ├── sql_connection.py
 ├── main.py
@@ -87,391 +45,159 @@ data-analytics-pipeline/
 └── README.md
 ```
 
-*Nota: la struttura comprende sia componenti già implementati sia moduli previsti per le evoluzioni successive. I file `validators/`, `reports/` e alcuni DAO sono da considerarsi opzionali finché non vengono effettivamente implementati.*
+## Componenti principali
 
-## Architettura
+### 1. Configurazione delle sorgenti — `config/sources.py`
 
-### 1. Readers
+Contiene le informazioni necessarie per individuare le sorgenti dati, come percorso del file, presenza dell'intestazione, delimitatore e codifica.
 
-La cartella `readers/` contiene le classi responsabili dell'acquisizione dei dati dalle sorgenti.
+### 2. Readers — `readers/`
 
-Ogni reader implementa un'interfaccia comune definita in `base_reader.py`, attraverso il metodo `read()`, che restituisce i dati in formato `pandas.DataFrame`.
+- `BaseReader`: definisce l'interfaccia comune per la lettura dei dati.
+- `CSVReader`: legge file CSV e restituisce DataFrame Pandas, effettuando controlli strutturali sui dati.
 
-Moduli principali:
+### 3. Transformations — `transformations/`
 
-- **`base_reader.py`**: definisce la classe astratta `BaseReader` e il contratto comune dei reader.
-- **`csv_reader.py`**: legge file CSV e gestisce intestazioni, delimitatori, codifica e struttura delle righe.
-- **Altri reader**: potranno essere aggiunti per Excel, API HTTP, database SQL e ulteriori sorgenti.
+- `film_transformers.py`: pulisce e normalizza i dati dei film, corregge alcune anomalie, estrae l'anno dal titolo e normalizza i generi.
+- `relational_movie_transformer.py`: trasforma il dataset in tre DataFrame relazionali:
+  - `movies`: informazioni sui film;
+  - `genres`: catalogo dei generi;
+  - `movie_genres`: associazioni tra film e generi.
 
-I reader si occupano dell'acquisizione dei dati, lasciando a `Database` e ai transformer le successive operazioni di elaborazione.
+### 4. Database in memoria — `database.py`
 
-### 2. Database
-
-Il file `database.py` contiene la classe `Database`, che coordina l'elaborazione dei dati acquisiti dai reader.
-
-Le sue responsabilità sono:
-
-1. Ricevere un reader e avviare la lettura della sorgente.
-2. Rinominare le colonne secondo uno schema standard, quando richiesto.
-3. Rimuovere spazi superflui e gestire stringhe vuote.
-4. Verificare la presenza delle colonne obbligatorie.
-5. Convertire i tipi di dato richiesti.
-6. Applicare le trasformazioni specifiche della sorgente.
-7. Conservare le tabelle elaborate in memoria.
-8. Esportare le tabelle in un database SQL attraverso il metodo `write_to_sql()`.
-
-Le tabelle sono archiviate nell'attributo `self.tables`, un dizionario che associa il nome della tabella al relativo DataFrame.
-
-Esempio:
-
-```python
-self.tables = {
-    "movies_clean": df_movies,
-    "genres": df_genres,
-}
-```
-
-Il metodo `add_source()` consente di caricare una sorgente e applicare, quando necessario, mapping, controlli sulle colonne, conversioni di tipo e trasformazioni.
-
-Il metodo `get_table()` restituisce una copia del DataFrame richiesto, mentre `list_tables()` restituisce i nomi delle tabelle presenti in memoria.
-
-Una singola sorgente può generare più tabelle se il transformer restituisce un dizionario di DataFrame.
-
-**Distinzione importante:** `Database` non è il database MySQL. È il componente Python che organizza e gestisce le tabelle durante l'esecuzione della pipeline. La persistenza viene affidata a MySQL attraverso la connessione SQL.
-
-### 3. Transformers
-
-La cartella `transformers/` contiene le funzioni responsabili delle trasformazioni specifiche del dominio.
-
-Queste operazioni sono separate dalla logica generica di `Database`, per rendere il codice più modulare e riutilizzabile.
-
-Il modulo attualmente utilizzato è `film_transformer.py`.
+La classe `Database` gestisce i DataFrame Pandas in memoria.
 
 Le sue responsabilità comprendono:
+- caricamento delle sorgenti;
+- mappatura e pulizia delle colonne;
+- validazione dei dati;
+- conversione dei tipi;
+- applicazione dei transformer;
+- registrazione e recupero delle tabelle;
+- esportazione dei DataFrame verso SQL.
 
-- Verifica delle colonne necessarie per l'elaborazione dei film.
-- Correzione delle anomalie conosciute nei dati.
-- Estrazione dell'anno dalla colonna `Title`.
-- Creazione della colonna `YEAR`.
-- Rimozione dell'anno dal titolo, quando estratto correttamente.
-- Standardizzazione dei generi e dei relativi separatori.
+Questa classe **non è il database MySQL**: rappresenta il livello di gestione dei dati in memoria.
 
-Le correzioni sono applicate al DataFrame in memoria, senza modificare il file CSV originale.
+### 5. Connessione SQL — `sql_connection.py`
 
-In futuro potranno essere aggiunti transformer dedicati a utenti, visualizzazioni, abbonamenti e altre entità.
+La classe `SQLConnection` gestisce la connessione a MySQL tramite SQLAlchemy e PyMySQL, utilizzando variabili d'ambiente per le credenziali.
 
-### 4. Connessione SQL
+Il database di destinazione è `onthemovie`.
 
-Il file `sql_connection.py` contiene la classe `SQLConnection`, responsabile della comunicazione tra Python e MySQL.
+### 6. Model — `model.py`
 
-La connessione utilizza:
+Definisce le classi Python:
+- `Movie`: rappresenta un film con ID, titolo, anno e lista dei generi associati.
+- `Genre`: rappresenta un genere con nome e lista dei film associati.
 
-- **SQLAlchemy** per la gestione del motore SQL.
-- **PyMySQL** come driver di comunicazione con MySQL.
-- **python-dotenv** per caricare le configurazioni dal file `.env`.
+Le relazioni tra film e generi sono bidirezionali in memoria.
 
-Le principali responsabilità sono:
+### 7. DAO — `dao/`
 
-- Leggere i parametri di connessione.
-- Creare il motore SQLAlchemy.
-- Verificare che il server sia raggiungibile e che la connessione funzioni.
-- Rilasciare le risorse al termine dell'operazione.
+- `DaoMovie`: carica i film dal CSV pulito, consente la ricerca per ID e restituisce l'elenco dei film.
+- `DaoGenre`: gestisce i generi e consente la ricerca per nome e il recupero di tutti i generi.
 
-La connessione è separata da `Database`: in questo modo, la logica di elaborazione dei DataFrame non dipende direttamente dai dettagli del server SQL.
+**Nota:** nella versione attuale i DAO leggono il CSV pulito e costruiscono oggetti Python in memoria; non interrogano direttamente MySQL.
 
-Il trasferimento dei dati viene coordinato da `Database.write_to_sql()`, che utilizza il motore fornito da `SQLConnection`.
+## Schema relazionale MySQL
 
-Nel caricamento attualmente previsto, Pandas crea la tabella di destinazione a partire dalle colonne e dai tipi rilevati nel DataFrame. Per tabelle definitive con chiavi primarie, indici e vincoli espliciti sarà opportuno predisporre uno schema SQL dedicato.
+Il database utilizza tre tabelle:
 
-### 5. DAO
+| Tabella | Contenuto |
+|---|---|
+| `movies` | ID, titolo e anno del film |
+| `genres` | ID e nome del genere |
+| `movie_genres` | Associazioni tra film e generi |
 
-La cartella `dao/` è destinata ai *Data Access Objects*.
+Le chiavi primarie identificano i record, mentre le chiavi esterne di `movie_genres` garantiscono i riferimenti alle tabelle `movies` e `genres`.
 
-I DAO forniscono metodi specifici per consultare i dati senza ripetere le operazioni di acquisizione e trasformazione.
+## Requisiti
 
-Esempi di metodi previsti:
+- Python 3.10 o superiore
+- MySQL
+- Pacchetti Python elencati in `requirements.txt`
 
-- `get_movie(movie_id)`
-- `get_movies_by_year(year)`
-- `get_movies_by_genre(genre)`
-- `get_all_genres()`
+## Installazione e configurazione
 
-A seconda dell'implementazione, i DAO potranno interrogare i DataFrame gestiti in memoria oppure accedere ai dati persistiti in MySQL.
+### 1. Creare l'ambiente virtuale
 
-La scelta della sorgente di accesso sarà definita in base al ruolo di ciascun DAO.
-
-I DAO rappresentano un livello di accesso ai dati distinto dai reader, dai transformer e dalla gestione della connessione SQL.
-
-### 6. Config
-
-La cartella `config/` contiene le configurazioni delle sorgenti.
-
-Il file `sources.py` definisce i parametri necessari per interpretare i dati in ingresso, ad esempio:
-
-- Percorso del file.
-- Formato della sorgente.
-- Presenza o assenza dell'intestazione.
-- Delimitatore e codifica dei CSV.
-- Mapping delle colonne.
-- Tipi di dato attesi.
-
-Esempio:
-
-```python
-SOURCES = {
-    "movies": {
-        "path": "data/movies.csv",
-        "has_header": True,
-        "delimiter": ",",
-        "encoding": "utf-8-sig",
-    }
-}
-```
-
-La configurazione separata dal codice consente di modificare le sorgenti senza intervenire sulla logica generale della pipeline.
-
-Le password e gli altri segreti non devono essere inseriti in `sources.py`.
-
-### 7. Data
-
-La cartella `data/` contiene i file utilizzati durante l'acquisizione e l'elaborazione.
-
-Può comprendere:
-
-- CSV originali.
-- CSV elaborati.
-- Dataset di test.
-- Altri file di input supportati dai reader implementati.
-
-Il file `movies_clean.csv` rappresenta l'output dell'elaborazione del dataset dei film.
-
-Il CSV originale viene mantenuto separato dall'output pulito, così da poter rieseguire le trasformazioni senza perdere la sorgente iniziale.
-
-I dati sensibili o riservati non devono essere caricati nella repository.
-
-## Flusso dei dati
-
-Il flusso principale della pipeline è il seguente:
-
-```text
-          FONTI ORIGINALI
-        CSV / Excel / API / SQL
-                  |
-                  v
-               READERS
-           Acquisizione dati
-                  |
-                  v
-              DATABASE
-       Mapping e pulizia generica
-        Validazione delle colonne
-          Conversione dei tipi
-                  |
-                  v
-             TRANSFORMERS
-       Regole specifiche del dominio
-       Standardizzazione e correzioni
-                  |
-                  v
-              self.tables
-       DataFrame elaborati in memoria
-                  |
-          +-------+-------+
-          |               |
-          v               v
-    ESPORTAZIONE CSV   CONNESSIONE SQL
-          |               |
-          v               v
-  movies_clean.csv    MySQL: movies_clean
-                          |
-                          v
-                    ANALYTICS / BI
-                      Power BI
-
-       DAO: livello di accesso ai dati,
-            in fase di sviluppo.
-```
-
-L'elaborazione e la pulizia avvengono in Python. CSV e MySQL costituiscono due destinazioni distinte per i risultati prodotti.
-
-## Installazione
-
-### Prerequisiti
-
-- Python compatibile con le dipendenze del progetto.
-- MySQL Server, se si desidera eseguire l'esportazione SQL.
-- Visual Studio Code o un ambiente di sviluppo equivalente.
-
-### Creazione dell'ambiente virtuale
-
-Dalla cartella principale del progetto:
+Su Windows:
 
 ```powershell
 python -m venv .venv
+.venv\Scripts\Activate.ps1
 ```
 
-Attivazione in Windows PowerShell:
+### 2. Installare le dipendenze
 
 ```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-Su macOS/Linux:
-
-```bash
-source .venv/bin/activate
-```
-
-### Installazione delle dipendenze
-
-```bash
-python -m pip install --upgrade pip
 python -m pip install -r requirements.txt
 ```
 
-Il file `requirements.txt` contiene le dipendenze principali:
+### 3. Configurare MySQL
 
-```text
-pandas>=2.2,<4.0
-sqlalchemy>=2.0,<3.0
-pymysql>=1.1,<2.0
-python-dotenv>=1.0,<2.0
-```
-
-## Configurazione
-
-### Configurazione della sorgente
-
-Le sorgenti vengono definite in `config/sources.py`.
-
-Esempio:
-
-```python
-SOURCES = {
-    "movies": {
-        "path": "data/movies.csv",
-        "has_header": True,
-        "delimiter": ",",
-        "encoding": "utf-8-sig",
-    }
-}
-```
-
-Il percorso deve corrispondere alla posizione effettiva del file CSV.
-
-### Configurazione MySQL
-
-Nella cartella principale del progetto, creare un file `.env` con i parametri della connessione:
+Creare un file `.env` nella root del progetto:
 
 ```dotenv
 MYSQL_HOST=localhost
 MYSQL_PORT=3306
-MYSQL_USER=il_tuo_username
-MYSQL_PASSWORD=la_tua_password
+MYSQL_USER=your_user
+MYSQL_PASSWORD=your_password
 MYSQL_DATABASE=onthemovie
 ```
 
-Sostituire i valori di esempio con quelli del proprio ambiente.
+Sostituire i valori di esempio con le proprie credenziali.
 
-Il database `onthemovie` deve esistere sul server MySQL e l'utente configurato deve avere i permessi necessari per creare e scrivere le tabelle.
+Il file `.env` non deve essere condiviso tramite Git. Inserirlo in `.gitignore`.
 
-## Esecuzione della pipeline
+### 4. Configurare il CSV
 
-Il file `main.py` rappresenta il punto di ingresso dell'applicazione.
+Verificare che il percorso della sorgente in `config/sources.py` corrisponda al file effettivamente presente nella cartella `data/`.
 
-Il flusso operativo è:
+## Esecuzione
 
-1. Caricare la configurazione della sorgente.
-2. Inizializzare il reader.
-3. Creare un'istanza di `Database`.
-4. Caricare i dati tramite `add_source()`.
-5. Applicare il transformer.
-6. Recuperare il DataFrame elaborato.
-7. Esportare il CSV pulito.
-8. Collegarsi a MySQL e trasferire la tabella.
-
-Per eseguire il programma:
+Dalla root del progetto:
 
 ```powershell
 python main.py
 ```
 
-Il file di output previsto per il dataset dei film è:
+Lo script esegue la lettura e la trasformazione dei dati, crea le tabelle relazionali in memoria, genera il CSV pulito, inizializza i DAO e avvia la connessione a MySQL per l'esportazione.
+
+Il CSV pulito viene salvato in:
 
 ```text
 data/movies_clean.csv
 ```
 
-Il programma può essere rieseguito a partire dal CSV originale, mantenendo le regole di trasformazione in un unico punto.
+## Risultati attesi
 
-## Esportazione in MySQL
+Sul dataset attualmente utilizzato, la pipeline produce:
 
-La connessione è gestita da `SQLConnection`, mentre `Database.write_to_sql()` trasferisce un DataFrame presente in memoria verso una tabella MySQL.
+| Elemento | Quantità |
+|---|---:|
+| Film | 3.883 |
+| Generi distinti | 18 |
+| Associazioni film-genere | 6.402 |
 
-Esempio di utilizzo:
+I DAO consentono, ad esempio, di recuperare un film tramite `get_movie_by_id()` e un genere tramite `get_genre_by_name()`.
 
-```python
-from database import Database
-from sql_connection import SQLConnection
+## Stato attuale e sviluppi futuri
 
-# db deve contenere già la tabella "movies_clean"
-sql = SQLConnection()
+Le funzionalità implementate comprendono:
+- lettura e validazione dei CSV;
+- pulizia e trasformazione dei dati;
+- creazione di DataFrame relazionali;
+- esportazione del CSV pulito;
+- connessione a MySQL;
+- creazione di oggetti `Movie` e `Genre` tramite DAO.
 
-try:
-    sql.connect()
+Sviluppi futuri:
+- implementare una strategia di caricamento SQL ripetibile e sicura;
+- gestire aggiornamenti e reinserimenti senza conflitti di chiave primaria;
+- valutare DAO che leggano direttamente da MySQL;
+- aggiungere test automatici per readers, transformer e DAO.
 
-    rows_written = db.write_to_sql(
-        table_name="movies_clean",
-        connection=sql,
-        sql_table_name="movies_clean",
-    )
+**Attenzione:** l'esportazione SQL attuale utilizza `append`. Se le tabelle contengono già gli stessi record, una nuova esecuzione può fallire a causa delle chiavi primarie duplicate. Prima di ripetere il caricamento completo è necessario gestire esplicitamente i dati esistenti.
 
-    print(f"Righe inserite: {rows_written}")
-
-finally:
-    sql.close()
-```
-
-La tabella `movies_clean` viene creata nel database indicato da `MYSQL_DATABASE`, se non esiste già.
-
-La versione corrente utilizza `if_exists="fail"`: se la tabella di destinazione esiste, l'operazione si interrompe per evitare di sovrascrivere dati esistenti.
-
-Questa modalità è adatta a un primo caricamento controllato. Per le esecuzioni successive sarà necessario definire una strategia di aggiornamento, ad esempio caricamento incrementale, staging o aggiornamento basato su chiavi.
-
-**Nota sullo schema SQL:** la creazione automatica tramite Pandas non garantisce la presenza di chiavi primarie, vincoli referenziali o indici. Questi elementi dovranno essere definiti esplicitamente per le tabelle definitive.
-
-## Gestione delle credenziali
-
-Il file `.env` contiene informazioni riservate e non deve essere versionato.
-
-Aggiungere al `.gitignore` almeno:
-
-```gitignore
-.env
-.venv/
-__pycache__/
-*.py[cod]
-data/
-```
-
-Se è necessario versionare dataset di esempio, è preferibile conservarli in una cartella dedicata e autorizzata, separata dai dati locali esclusi dal controllo versione.
-
-Non inserire password, token o credenziali direttamente nei file Python o nel README.
-
-## Estensioni future
-
-Le evoluzioni previste comprendono:
-
-- Reader per Excel, API HTTP e ulteriori database.
-- Validazione avanzata della qualità dei dati.
-- Report automatici delle anomalie e delle correzioni.
-- Controlli su duplicati, chiavi e relazioni tra tabelle.
-- Schemi SQL espliciti con chiavi primarie, indici e vincoli.
-- Strategie di caricamento incrementale e aggiornamento delle tabelle.
-- Implementazione dei DAO per l'accesso ai dati.
-- Logging strutturato e gestione centralizzata degli errori.
-- Test automatici con `pytest`.
-- Integrazione con Power BI e altri strumenti di Business Intelligence.
-- Gestione di dataset di dimensioni maggiori e valutazione di ulteriori strategie di persistenza.
-
-L'architettura continuerà a mantenere separate acquisizione, trasformazione, gestione in memoria, persistenza e accesso ai dati, favorendo la manutenibilità e il riutilizzo del codice.
