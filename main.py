@@ -74,6 +74,30 @@ def main():
 
     print(f"CSV pulito esportato in: {output_path}")
 
+    #esporto i csv flat
+    movies.to_csv(
+    "data/movies.csv",
+    index=False,
+    encoding="utf-8-sig",
+    )
+
+    genres.to_csv(
+        "data/genres.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    movie_genres.to_csv(
+        "data/movie_genres.csv",
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    print("CSV relazionali esportati:")
+    print("- data/movies.csv")
+    print("- data/genres.csv")
+    print("- data/movie_genres.csv")
+
     # Creazione dei DAO
     dao_genre = DaoGenre()
     dao_movie = DaoMovie(output_path, dao_genre)
