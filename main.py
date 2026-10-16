@@ -3,9 +3,10 @@ import os
 
 from config.sources import SOURCES
 from readers.csv_reader import CSVReader
-from transformers.film_transformers import transform_movies
+from transformations.film_transformers import transform_movies
 from database import Database
 from sql_connection import SQLConnection
+from transformations.relational_movie_transformer import transform_movies_relational
 
 
 def main():
@@ -26,20 +27,22 @@ def main():
         table_name="movies_clean",
         reader=reader,
         required_columns=["MovieID", "Title", "Genres"],
-        transformer=transform_movies,
+        transformer=transform_movies_relational,
     )
 
-    # Recupero della tabella pulita
-    movies = db.get_table("movies_clean")
-
-    # Controlli preliminari
+        # Recupero delle tabelle relazionali
     print("Tabelle caricate:", db.list_tables())
+
+    movies = db.get_table("movies")
+    genres = db.get_table("genres")
+    movie_genres = db.get_table("movie_genres")
+
     print("Numero di film:", len(movies))
-    print("Colonne:", movies.columns.tolist())
+    print("Numero di generi:", len(genres))
+    print("Numero di associazioni:", len(movie_genres))
 
-    # Esportazione del CSV pulito
+    # Esporta il CSV dei film
     output_path = "data/movies_clean.csv"
-
     os.makedirs("data", exist_ok=True)
 
     movies.to_csv(
@@ -47,31 +50,32 @@ def main():
         index=False,
         encoding="utf-8-sig",
     )
-
-    
     # Caricamento in MySQL
     sql = SQLConnection()
 
     try:
         sql.connect()
 
-        rows_written = db.write_to_sql(
-            table_name="movies_clean",
-            connection=sql,
-            sql_table_name="movies_clean",
+        # Prima i record principali
+        db.write_to_sql(
+            "movies", sql, if_exists="append"
+        )
+        db.write_to_sql(
+            "genres", sql, if_exists="append"
         )
 
-        print(
-            f"Caricamento MySQL completato: "
-            f"{rows_written} righe inserite."
+        # Poi le associazioni: i record referenziati esistono già
+        db.write_to_sql(
+            "movie_genres", sql, if_exists="append"
         )
+
+        print("Esportazione SQL completata.")
 
     finally:
         sql.close()
 
 
     print(f"CSV pulito esportato in: {output_path}")
-
 
 if __name__ == "__main__":
     main()

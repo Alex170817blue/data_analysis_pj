@@ -18,37 +18,41 @@ class Database:
     def __init__(self):
         self.tables: dict[str, pd.DataFrame] = {}
 
+    
     def add_source(
         self,
         table_name: str,
-        reader: BaseReader, #il base reader ci dice che fonte ho
+        reader: BaseReader,
         column_mapping: dict[str, str] | None = None,
         required_columns: list[str] | None = None,
-        dtypes: dict[str, str] | None = None, #questo ci permette di mappare delle trasformazioni o lasciarle così come le riceviamo
-        transformer=None, #aggiungi funzioni/oggetti transformatori se necessario
+        dtypes: dict[str, str] | None = None,
+        transformer=None,
     ) -> None:
 
-        #LETTURA E MAPPATURA
+        # 1. Lettura della sorgente
         df = reader.read()
 
+        # 2. Mappatura delle colonne
         if column_mapping:
             missing = set(column_mapping) - set(df.columns)
 
             if missing:
                 raise ValueError(
-                    f"Colonne mancanti: {sorted(missing)}"
+                    f"Colonne mancanti per la mappatura: {sorted(missing)}"
                 )
 
             df = df.rename(columns=column_mapping)
 
-        #PULIZIA E VALIDAZIONE
+        # 3. Pulizia delle stringhe
         for column in df.select_dtypes(include=["object"]).columns:
             df[column] = df[column].map(
-                lambda value: ( value.strip() if isinstance(value, str) else value)
+                lambda value: (
+                    value.strip() if isinstance(value, str) else value
+                )
             )
-
             df[column] = df[column].replace("", pd.NA)
 
+        # 4. Validazione delle colonne obbligatorie
         if required_columns:
             missing = set(required_columns) - set(df.columns)
 
@@ -57,7 +61,7 @@ class Database:
                     f"Colonne obbligatorie mancanti: {sorted(missing)}"
                 )
 
-        #TRASFORMAZIONI
+        # 5. Conversione dei tipi
         if dtypes:
             for column, dtype in dtypes.items():
                 if column not in df.columns:
@@ -71,7 +75,9 @@ class Database:
                         df[column], errors="raise"
                     ).astype(dtype)
 
-                elif dtype in ("float64", "Float64", "float", "FLOAT", "Float"):
+                elif dtype in (
+                    "float64", "Float64", "float", "FLOAT", "Float"
+                ):
                     df[column] = pd.to_numeric(
                         df[column], errors="raise"
                     ).astype(dtype)
@@ -82,9 +88,10 @@ class Database:
                 else:
                     df[column] = df[column].astype(dtype)
 
+        # 6. Trasformazione: chiamata una sola volta
         result = transformer(df.copy()) if transformer else df
 
-        #CREAZIONE TABELLE
+        # 7. Normalizza il risultato in un dizionario di DataFrame
         if isinstance(result, pd.DataFrame):
             new_tables = {table_name: result}
 
@@ -93,22 +100,22 @@ class Database:
 
             if not all(
                 isinstance(name, str)
+                and name.strip()
                 and isinstance(table, pd.DataFrame)
                 for name, table in new_tables.items()
             ):
                 raise TypeError(
-                    "Il transformer deve restituire un DataFrame oppure un dizionario di DataFrame."
+                    "Il transformer deve restituire un DataFrame "
+                    "oppure un dizionario con nomi e DataFrame validi."
                 )
 
         else:
             raise TypeError(
-                "Il risultato deve essere un DataFrame oppure un dizionario di DataFrame."
+                "Il transformer deve restituire un DataFrame "
+                "oppure un dizionario di DataFrame."
             )
 
-        if not all(name for name in new_tables):
-            raise ValueError("I nomi delle tabelle non possono essere vuoti.")
-
-        # GESTIAMO ESISTENZA DI DUPLICATI TABELLE
+        # 8. Verifica le collisioni prima di registrare qualsiasi tabella
         conflicts = set(new_tables) & set(self.tables)
 
         if conflicts:
@@ -116,10 +123,12 @@ class Database:
                 f"Tabelle già presenti: {sorted(conflicts)}"
             )
 
+        # 9. Registra tutte le tabelle
         self.tables.update({
             name: table.copy()
             for name, table in new_tables.items()
         })
+
 
     def get_table(self, table_name: str) -> pd.DataFrame:
         if table_name not in self.tables:
@@ -148,6 +157,7 @@ class Database:
             table_name: str,
             connection,
             sql_table_name: str | None = None,
+            if_exists: str = "fail",
         ) -> int:
         if table_name not in self.tables:
             raise KeyError(
@@ -159,13 +169,18 @@ class Database:
                 "Connessione SQL non attiva. Chiama connect() prima."
             )
 
+        if if_exists not in {"fail", "append"}:
+            raise ValueError(
+                "if_exists deve essere 'fail' oppure 'append'."
+            )
+
         df = self.get_table(table_name)
         destination = sql_table_name or table_name
 
         df.to_sql(
             name=destination,
             con=connection.engine,
-            if_exists="fail",
+            if_exists=if_exists,
             index=False,
         )
 
