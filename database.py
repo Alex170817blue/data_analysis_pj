@@ -29,10 +29,10 @@ class Database:
         transformer=None,
     ) -> None:
 
-        # 1. Lettura della sorgente
+        # Lettura della sorgente
         df = reader.read()
 
-        # 2. Mappatura delle colonne
+        # Mappatura delle colonne
         if column_mapping:
             missing = set(column_mapping) - set(df.columns)
 
@@ -43,7 +43,7 @@ class Database:
 
             df = df.rename(columns=column_mapping)
 
-        # 3. Pulizia delle stringhe
+        # Pulizia delle stringhe
         for column in df.select_dtypes(include=["object"]).columns:
             df[column] = df[column].map(
                 lambda value: (
@@ -52,7 +52,7 @@ class Database:
             )
             df[column] = df[column].replace("", pd.NA)
 
-        # 4. Validazione delle colonne obbligatorie
+        # Validazione delle colonne obbligatorie
         if required_columns:
             missing = set(required_columns) - set(df.columns)
 
@@ -61,7 +61,7 @@ class Database:
                     f"Colonne obbligatorie mancanti: {sorted(missing)}"
                 )
 
-        # 5. Conversione dei tipi
+        # Conversione dei tipi
         if dtypes:
             for column, dtype in dtypes.items():
                 if column not in df.columns:
@@ -88,10 +88,10 @@ class Database:
                 else:
                     df[column] = df[column].astype(dtype)
 
-        # 6. Trasformazione: chiamata una sola volta
+        # Trasformazione: chiamata una sola volta
         result = transformer(df.copy()) if transformer else df
 
-        # 7. Normalizza il risultato in un dizionario di DataFrame
+        # Normalizzo il risultato in un dizionario di DataFrame
         if isinstance(result, pd.DataFrame):
             new_tables = {table_name: result}
 
@@ -115,7 +115,7 @@ class Database:
                 "oppure un dizionario di DataFrame."
             )
 
-        # 8. Verifica le collisioni prima di registrare qualsiasi tabella
+        # Verifico le collisioni prima di registrare tabelle
         conflicts = set(new_tables) & set(self.tables)
 
         if conflicts:
@@ -123,7 +123,7 @@ class Database:
                 f"Tabelle già presenti: {sorted(conflicts)}"
             )
 
-        # 9. Registra tutte le tabelle
+        # Registro tutte le tabelle
         self.tables.update({
             name: table.copy()
             for name, table in new_tables.items()
@@ -141,6 +141,7 @@ class Database:
     def list_tables(self) -> list[str]:
         return list(self.tables.keys())
 
+    # Crea una tabella vuota con le colonne specificate
     def create_empty_table(self, table_name, columns):
         if table_name in self.tables:
             raise ValueError(
@@ -151,7 +152,7 @@ class Database:
             columns=columns
         )
 
-    
+    # Scrive una tabella in un database SQL    
     def write_to_sql(
             self,
             table_name: str,
@@ -188,32 +189,57 @@ class Database:
 
 '''
 
-Come si usa??
 
-reader = MioReader("mio/file.csv")
-OPPURE
-reader = MioReader(
-    "host": os.getenv("DB_HOST"),
-    "user": os.getenv("DB_USER"),
-    "password": os.getenv("DB_PASSWORD"),
-    "port":os.getenv("PORT"))
+    Gestisce tabelle Pandas in memoria e permette di preparare i dati
+    per l'esportazione in un database SQL.
 
-db = Dataabase()
+    COME SI USA
+    -----------
+    1. Creare un'istanza della classe Database.
+    2. Caricare una sorgente tramite add_source(), passando un reader
+       e, se necessario, le opzioni per la mappatura delle colonne,
+       la validazione, la conversione dei tipi e la trasformazione
+       dei dati.
+    3. Recuperare una tabella con get_table() oppure visualizzare
+       le tabelle caricate con list_tables().
+    4. Creare una tabella vuota con create_empty_table(), se necessario.
+    5. Esportare una tabella verso SQL con write_to_sql(), dopo aver
+       stabilito la connessione al database.
 
-db.add_source(
-    table_name = "mia_tabllea",
-    reader = reader,
-    column_mapping={
-        "colonnaID" : "id_colonna",
-        "Titoli" : "titoli_film",
-        ...
-        },
-    required_columns=["id_colonna", "titoli_film", etc],
-    dtypes={
-        "movie_id": "int",
-        "title": "str",
-        ...
-        },
-     )
+    Il metodo add_source() può registrare una singola tabella oppure
+    più tabelle, se il transformer restituisce un dizionario di
+    DataFrame.
 
+    Le tabelle vengono conservate in memoria: non sono salvate
+    automaticamente su disco o nel database SQL.
+
+    Nota: write_to_sql() supporta 'fail' per evitare di sovrascrivere
+    una tabella esistente e 'append' per aggiungere righe. Con 'append',
+    eventuali chiavi primarie già presenti possono causare errori.
+    
+
+    # 1. Creo il database in memoria
+    database = Database()
+
+    # 2. Carico e trasformo una sorgente
+    database.add_source(
+        table_name="movies",
+        reader=reader,
+        transformer=transform_movies
+    )
+
+    # 3. Visualizzo le tabelle disponibili
+    print(database.list_tables())
+
+    # 4. Recupero una tabella
+    movies_df = database.get_table("movies")
+
+    # 5. Esporto la tabella in SQL
+    connection.connect()
+    database.write_to_sql(
+        table_name="movies",
+        connection=connection,
+        if_exists="append"
+    )
+    
 '''
