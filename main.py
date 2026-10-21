@@ -486,7 +486,7 @@ def main():
     )
 
     # --------------------------------------------------------
-    # 9. CARICAMENTO DI USERS E RATINGS IN MYSQL
+    # 9. CARICAMENTO DATI IN MYSQL
     # --------------------------------------------------------
 
     # Crea l'oggetto che gestisce la connessione SQL.
@@ -495,6 +495,14 @@ def main():
     try:
         # Apre la connessione al database.
         sql.connect()
+
+        #carico prima i film, generi e associazioni.
+        movies_inserted = db.write_to_sql(table_name="movies", connection=sql, if_exists="append")
+        print(f"Film inviati a MySQL: {movies_inserted}")
+        genres_inserted = db.write_to_sql(table_name="genres", connection=sql, if_exists="append")
+        print(f"Generi inviati a MySQL: {genres_inserted}")
+        movie_genres_inserted = db.write_to_sql(table_name="movie_genres", connection=sql, if_exists="append")
+        print(f"Associazioni Film-Genere inviate a MySQL: {movie_genres_inserted}")
 
         # Carica prima gli utenti.
         # È necessario perché ratings contiene una chiave
@@ -522,6 +530,8 @@ def main():
         print(f"Valutazioni inviate a MySQL: {ratings_inserted}")
 
         print("Caricamento SQL completato.")
+
+
 
     finally:
         # Chiude la connessione anche se si verifica
