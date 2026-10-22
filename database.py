@@ -11,6 +11,8 @@ converte i tipi di dato se richiesto
 salva i dati in tabelle dentro un dizionario self.tables
 può produrre una o più tabelle in formato df da una sola fonte --> trasformatore
 
+Dubbi su come si usa? leggi sotto, c'è un esempio pratico di utilizzo.
+
 '''
 
 class Database:
@@ -241,5 +243,5 @@ class Database:
         connection=connection,
         if_exists="append"
     )
-    
+
 '''
